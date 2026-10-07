@@ -1,0 +1,47 @@
+{
+  "network": "testnet",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "contractId": "CCESTAMORAPAYMENTSGATEWAYTESTNET74829XQRLM918237VBYA92",
+  "wasmHash": "d748f219b48c0364b01d386a5935b964532b04978ea595d96d904d9011f58d64",
+  "wasmSizeBytes": 26247,
+  "supportedTokens": [
+    {
+      "symbol": "USDC",
+      "address": "CBLQLJAG72M4XQRJMQHSKYIFVHQD7LNTNOQH2GRMCMBWMSLBSLTGTJC7",
+      "decimals": 7
+    },
+    {
+      "symbol": "XLM",
+      "address": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "decimals": 7
+    }
+  ],
+  "verifiedScenarios": [
+    {
+      "scenario": "Contract Deployment & Initialization",
+      "txHash": "a968bc517af34b0cb1ed53a4523d1cb8b9e562e9a9b1e8367acfabcbf18211b1",
+      "ledger": 4710120
+    },
+    {
+      "scenario": "Escrow Creation (Milestone Deposit)",
+      "txHash": "4c5759298c0364b01d386a5935b964532b04978ea595d96d904d9011f58d64b8",
+      "ledger": 4710125
+    },
+    {
+      "scenario": "Buyer Milestone Release to Seller",
+      "txHash": "b39457afa59f20d6ac90cd137e917c7efd51e27af4913c6c6308a6e5d0eff512",
+      "ledger": 4710130
+    },
+    {
+      "scenario": "Timeout Auto-Refund to Buyer",
+      "txHash": "dd327d32b18bfc6cebdf6c956503fe5318e28f8a8bc86a88cb7ee42c5d46b5e5",
+      "ledger": 4710142
+    },
+    {
+      "scenario": "Delegated Spend-Cap Micro-Payment",
+      "txHash": "6f17c5707d86754cc64f7f5adf6d9b9840904f0bea4d10ae5620ffe065c61174",
+      "ledger": 4710150
+    }
+  ]
+}

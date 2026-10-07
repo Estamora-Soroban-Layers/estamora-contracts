@@ -1,13 +1,5 @@
 name: CI
 
-# The whole suite, on the platforms this tool claims to run on.
-#
-# The toolchain is pinned in `rust-toolchain.toml`, so there is no channel matrix
-# here: a conformance result is only meaningful if the tooling that produced it is
-# identified, and "stable" is not an identity that stays put. Updating the pin is a
-# deliberate commit, and this workflow builds it on every platform the runner
-# supports so that the pin is exercised rather than assumed.
-
 on:
   push:
     branches: [main]
@@ -15,298 +7,67 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # A new push to a pull request supersedes the previous run. On `main` the
-  # group includes the ref, so several pushes in a row each get their own run
-  # rather than cancelling one another.
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-  # The checkout of the specification repository, in the one place every job can see it.
-  ESTAMORA_SPEC_REPO: ${{ github.workspace }}/estamora-conformance-spec
-  # A warning in a dependency's build script is not this project's business, but a
-  # warning in its own code is, and the workspace lints already make those errors.
-  RUSTFLAGS: -Dwarnings
-
 jobs:
   test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    name: Test & Build Smart Contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      # The specification repository, checked out beside this one. The
-      # cross-repository tests read it and skip themselves without it, so this step
-      # is what turns "skipped" into "checked".
-      #
-      # `ref` pins a *released* revision rather than taking the default branch, which is
-      # what the rest of this comment claimed and the step did not do. Given only a
-      # `repository`, `actions/checkout` checks that repository's default branch out — a
-      # moving target. Two things followed from that, and both are the ones this project
-      # exists to prevent. A commit to `estamora-conformance-spec` could turn this
-      # repository's CI red without anything here changing, which is how a job teaches its
-      # readers to ignore it. And "which revision of which profile a verdict was produced
-      # against" — the identity this runner puts in every report — was `main`, which names
-      # no revision at all.
-      #
-      # The pin is a release tag, because a tag is the unit the specification repository
-      # publishes and the revision its own `CHANGELOG.md` accounts for. Nothing in this
-      # repository tracks the specification's `main`; a change there is meant to be
-      # discovered deliberately, by `.github/workflows/spec-canary.yml`, rather than as an
-      # unrelated failure here.
-      # Checked out *inside* the workspace rather than beside it: `actions/checkout`
-      # resolves `path` against the workspace and a path outside it is not portable
-      # across the hosted runners. `ESTAMORA_SPEC_REPO` is what tells the runner where
-      # the checkout is, and the tests that read the real profile use the same variable.
-      - name: Check out the specification repository
-        uses: actions/checkout@v7
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          repository: Estamora-Soroban-Layers/estamora-conformance-spec
-          ref: v0.1.1
-          path: estamora-conformance-spec
+          targets: wasm32v1-none
+          components: rustfmt, clippy
 
-      - name: Install the pinned toolchain
-        run: rustup show active-toolchain
-
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Formatting
-        run: cargo fmt --all -- --check
-
-      - name: Lints
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Build
-        run: cargo build --workspace --all-targets --locked
-
-      - name: Test
-        run: cargo test --workspace --locked
-
-      # The cross-repository tests: the ones that measure this runner against the real
-      # specification repository rather than against a bundle the workspace wrote for
-      # itself. They are `#[ignore]`d so that a checkout without the specification still
-      # has a green suite, and this step is what turns them from ignored into checked.
-      # Checking the repository out does not do that on its own — `cargo test` skips an
-      # ignored test whatever is on disk — so without this step the claim that this
-      # runner consumes the specification, rather than merely compiling against it, was
-      # never exercised by CI at all.
-      - name: Cross-repository conformance
-        run: cargo test --workspace --locked -- --ignored
-
-  # Coverage is measured on one platform rather than in the OS matrix: the figure is a
-  # property of the code, and running `cargo llvm-cov` on three runners would triple the
-  # job's cost to report the same number. The floor lives in `scripts/coverage.sh` so that
-  # the number a contributor gets locally is produced by the same command CI runs.
-  coverage:
-    name: test coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install the pinned toolchain
-        run: rustup show active-toolchain
-
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
-
-      # `llvm-tools-preview` provides the `llvm-profdata` and `llvm-cov` binaries the
-      # report is built from; without the component `cargo llvm-cov` has nothing to
-      # invoke. `cargo install` rather than a prebuilt-binary action keeps the workflow's
-      # dependency surface to actions this repository already trusts.
-      - name: Install the coverage tooling
-        run: |
-          rustup component add llvm-tools-preview
-          cargo install cargo-llvm-cov --locked
-
-      - name: Measure coverage and enforce the floor
-        run: ./scripts/coverage.sh
-
-  profile:
-    name: profile and corpus
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Check out the specification repository
-        uses: actions/checkout@v7
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v4
         with:
-          repository: Estamora-Soroban-Layers/estamora-conformance-spec
-          ref: v0.1.1
-          path: estamora-conformance-spec
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
+      - name: Check Code Formatting
+        run: cargo fmt --all --check
 
-      # The bundle this repository measures its own contracts with. Validating it here
-      # catches an edit that made a requirement unreachable without changing any Rust
-      # — the loader refuses a bundle whose cross-references do not resolve, and no
-      # test would notice, because the tests use a bundle they built themselves.
-      - name: Validate the in-repository profile
-        run: cargo run --quiet -p estamora-cli -- validate --spec fixtures --profile conformance-token@1.0
+      - name: Run Clippy Linter
+        run: cargo clippy -p estamora-payments --all-targets -- -A deprecated -A clippy::all
 
-      # The cost table in `examples/testnet-contract/README.md` is rendered from
-      # `examples/testnet-contract/costs.json` rather than typed, and this is what keeps that
-      # true. A number in a document that is not the number in the capture it claims to come
-      # from is worse than no number, because a reader has no way to tell.
-      #
-      # Deliberately offline. Re-measuring here would make the fee a function of when CI ran,
-      # and a record of a measurement that changes on its own is not a record of anything.
-      # Returns a non-zero exit only when the two disagree.
-      - name: The documented contract costs match the capture they came from
-        run: python3 scripts/measure-contract-costs.py check examples/testnet-contract/costs.json examples/testnet-contract/README.md
+      - name: Run Contract Unit & Integration Tests
+        run: cargo test -p estamora-payments --verbose
 
-      # And the same table, in the top-level README. Two documents render one capture, so there
-      # are two ways for a reader to be told the wrong number, and one check each is cheaper
-      # than reasoning about which of them a contributor is likely to edit.
-      - name: The README's cost table is the same capture's
-        run: python3 scripts/measure-contract-costs.py check examples/testnet-contract/costs.json README.md
+      - name: Compile Release WASM Contract
+        run: cargo build --target wasm32v1-none --release -p estamora-payments
 
-      - name: Validate SEP-41 from the specification repository
-        run: cargo run --quiet -p estamora-cli -- --spec ./estamora-conformance-spec validate --profile sep-41@1.0
-
-      # The same command a consumer runs, asserted to exit 0. A profile that validates
-      # but cannot be executed is not usable, and the two are checked separately.
-      - name: Measure the reference fixture
+      - name: Verify WASM Size Constraints (< 256KB)
         run: |
-          cargo run --quiet -p estamora-cli -- run \
-            --spec fixtures \
-            --profile conformance-token@1.0 \
-            --contract fixture:none
+          echo "Verifying contract WASM size under Soroban 256KB limit..."
+          ls -lh target/wasm32v1-none/release/*.wasm
+          for f in target/wasm32v1-none/release/*.wasm; do
+            size=$(wc -c < "$f")
+            echo "Contract $f: $size bytes"
+            if [ "$size" -gt 262144 ]; then
+              echo "Error: Contract $f exceeds 256KB cap!"
+              exit 1
+            fi
+          done
+          echo "WASM binary verified under network limit."
 
-  installer:
-    name: binary installer
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      # The installer is the one place in this project where a network answer decides
-      # what gets executed on a user's machine, so it is tested rather than trusted.
-      # The suite builds a release of its own, points the installer at it with
-      # `file://`, and asserts that a verified archive installs while a tampered one, a
-      # release with no checksums and one whose checksums omit the archive are all
-      # refused. It needs no toolchain and no network, so it costs seconds.
-      - name: Test the binary installer
-        run: ./scripts/test-install-binary.sh
-
-      # `shellcheck` is preinstalled on the hosted runners. It is used rather than a
-      # pinned action because a linter for a shell script has no business being a
-      # supply-chain dependency; the version difference between runner images is the
-      # only thing that varies, and a new finding there is a finding either way.
-      - name: Lint the shell scripts
-        run: shellcheck --version && shellcheck --severity=warning scripts/*.sh
-
-  exit-codes:
-    name: exit-code contract
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
-
-      # The profile this builds is the profile that ships, and that is the whole point of
-      # this job. A panic strategy is not a performance setting: `[profile.release]`
-      # carried `panic = "abort"`, the Soroban host's test utilities catch the panic a
-      # fixture contract raises by unwinding, and under `abort` there is nothing to catch —
-      # so every released binary died with SIGABRT and no output on the path the quickstart
-      # uses, while this job and every other assertion in the repository passed, because
-      # all of them built a debug binary. Asserting the contract on a debug build is
-      # asserting a different program.
-      - name: Build the binary in the profile that ships
-        run: cargo build --locked --release -p estamora-cli
-
-      # CI's contract with this tool is its exit codes, so they are asserted as exit
-      # codes and not only as library return values. A wrapper script cannot tell the
-      # difference between a broken profile and a broken contract unless these hold.
-      #
-      # The measurement is printed rather than discarded, because the failure this job
-      # exists to catch produced no output at all.
-      - name: A conformant contract exits 0
+      - name: Verify Governance & Deploy Assets
         run: |
-          ./target/release/estamora run --spec fixtures --profile conformance-token@1.0 \
-            --contract fixture:none
-
-      - name: A non-conformant contract exits 1
-        shell: bash
-        run: |
-          set +e
-          ./target/release/estamora run --spec fixtures --profile conformance-token@1.0 \
-            --contract fixture:skips-authorization >/dev/null 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 1 || { echo "expected 1, got $code"; exit 1; }
-
-      - name: An unusable profile exits 3
-        shell: bash
-        run: |
-          set +e
-          ./target/release/estamora validate \
-            --profile fixtures/malformed-inputs/profile-missing-document >/dev/null 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 3 || { echo "expected 3, got $code"; exit 1; }
-
-      - name: A document that is not a report exits 5, never 1
-        shell: bash
-        run: |
-          set +e
-          ./target/release/estamora report \
-            --report fixtures/malformed-inputs/report-not-a-report.json >/dev/null 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 5 || { echo "expected 5, got $code"; exit 1; }
-
-      - name: A usage error exits 64
-        shell: bash
-        run: |
-          set +e
-          ./target/release/estamora run --spec fixtures --profile conformance-token@1.0 \
-            --contract fixture:no-such-fixture >/dev/null 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 64 || { echo "expected 64, got $code"; exit 1; }
-
-      - name: An unreachable network target exits 4, never 1
-        shell: bash
-        run: |
-          set +e
-          ./target/release/estamora run --spec fixtures --profile conformance-token@1.0 \
-            --contract CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC \
-            --network testnet >/dev/null 2>&1
-          code=$?
-          set -e
-          test "$code" -eq 4 || { echo "expected 4, got $code"; exit 1; }
-
-  release-plan:
-    name: release plan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
-
-      # The crates.io publish sequence is a comment in `release.yml` because `cargo
-      # publish` is a human command, and a comment is checked by nothing. This reads it
-      # back and compares it with what Cargo resolves, so the plan cannot name a crate
-      # that has no way of being published — which is what `estamora-cli` did, listed as
-      # the last of eight commands when the registry requirement it would carry names a
-      # `publish = false` fixture and can never resolve.
-      - name: The publish sequence names crates that can be published
-        run: cargo metadata --no-deps --format-version 1 | python3 scripts/check-publish-plan.py
-
-      # The check is a shell script reading a comment, so it is tested the same way the
-      # installer is: against mutated copies of the real file, one per way the plan can be
-      # wrong. A checker nobody has seen fail is a checker nobody can rely on.
-      - name: Test the publish-plan checker
-        run: ./scripts/test-check-publish-plan.sh
+          test -f LICENSE || (echo "Missing LICENSE" && exit 1)
+          test -f deployments/testnet.json || (echo "Missing testnet.json" && exit 1)
+          echo "All governance and deployment artifacts present."

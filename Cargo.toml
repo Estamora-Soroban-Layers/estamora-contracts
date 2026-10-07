@@ -1,196 +1,23 @@
-# Estamora conformance runner — Cargo workspace.
-#
-# The crates are layered so that each one depends only on the layers below it:
-#
-#   estamora-core         error taxonomy, outcomes, engine, assertions
-#   estamora-profile      loads and validates bundles produced by the spec repo
-#   estamora-vectors      loads and resolves the vector corpus
-#   estamora-soroban      talks to Soroban: contracts, invocations, events, auth
-#   estamora-assertions   evaluates a profile requirement against an observation
-#   estamora-report       renders results as JSON, Markdown and JUnit
-#   estamora-certification digests, receipts and receipt verification
-#   estamora-cli          the `estamora` binary
-#
-# Nothing below `estamora-soroban` may depend on it: the specification-consuming
-# and reporting layers must stay usable — and testable — without a network or an
-# execution environment.
-
 [workspace]
-resolver = "3"
+resolver = "2"
 members = [
-  "crates/estamora-core",
-  "crates/estamora-profile",
-  "crates/estamora-vectors",
-  "crates/estamora-soroban",
-  "crates/estamora-assertions",
-  "crates/estamora-report",
-  "crates/estamora-certification",
-  "crates/estamora-cli",
-  "fixtures/contracts/conformance-token",
-  "integration-tests",
-  "benches",
+    "contracts/estamora-payments",
 ]
 
 [workspace.package]
-version = "0.1.3"
-edition = "2024"
-rust-version = "1.98"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
 license = "Apache-2.0"
-repository = "https://github.com/Estamora-Soroban-Layers/estamora-conformance-runner"
-homepage = "https://github.com/Estamora-Soroban-Layers/estamora-conformance-runner"
-authors = ["Estamora contributors"]
-keywords = ["stellar", "soroban", "conformance", "testing"]
-categories = ["development-tools::testing"]
-readme = "README.md"
-
-# Dependency versions are declared once, here, and pinned in Cargo.lock. They are
-# pinned deliberately: an unpinned validator or SDK changes the meaning of a
-# passing run without any profile changing, which is exactly the kind of drift
-# this project exists to make visible.
-#
-# Versions are chosen to agree with the Soroban SDK rather than to be newest.
-# soroban-sdk 27 depends on sha2 ^0.10 and ed25519-dalek ^2, so the runner uses
-# the same majors; mixing them would produce two incompatible copies of the
-# crypto types and a type error at every boundary.
-[workspace.dependencies]
-# The workspace's own crates, declared here with both a `path` and a `version`. The
-# version is not decoration. `deny.toml` refuses a wildcard requirement, and a path
-# dependency with no version is exactly that: a requirement nobody has decided. The
-# same rule the external dependencies below follow is applied to the crates this
-# workspace owns, and stating it once means nine manifests cannot drift apart.
-#
-# The list is in the workspace's layering order, bottom first. Nothing below
-# `estamora-soroban` may depend on it.
-estamora-core = { version = "0.1.0", path = "crates/estamora-core" }
-estamora-profile = { version = "0.1.0", path = "crates/estamora-profile" }
-estamora-vectors = { version = "0.1.0", path = "crates/estamora-vectors" }
-estamora-soroban = { version = "0.1.0", path = "crates/estamora-soroban" }
-estamora-assertions = { version = "0.1.0", path = "crates/estamora-assertions" }
-estamora-report = { version = "0.1.0", path = "crates/estamora-report" }
-estamora-certification = { version = "0.1.0", path = "crates/estamora-certification" }
-estamora-cli = { version = "0.1.0", path = "crates/estamora-cli" }
-# The in-repository contract set. The version is required here for the same reason as
-# the crates above; the crate itself is `publish = false`, so its version never has to
-# exist in a registry — installation is from a checkout or a release artefact.
-estamora-fixture-token = { version = "0.1.0", path = "fixtures/contracts/conformance-token" }
-
-# Error and serialization
-anyhow = "1.0.104"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.151"
-thiserror = "2.0.20"
-# YAML is read with a maintained fork of the unmaintained `serde_yaml`.
-serde_yaml_ng = "0.10.0"
-# CLI and output
-clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
-# Encoding and identity
-sha2 = "0.10.9"
-hex = "0.4.3"
-ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
-base64 = "0.22.1"
-# Time is fixed at the boundary: the runner records an instant, it never
-# schedules anything.
-time = { version = "0.3.45", features = ["formatting", "parsing", "serde"] }
-# Soroban. The runner executes contracts through the SDK's test host locally and
-# through the RPC client against a network.
-soroban-sdk = { version = "27.0.6", features = ["testutils"] }
-# The network transport. A deployed contract is *resolved* over RPC — read out of the
-# ledger as WebAssembly — and then *measured* in the local host, exactly like a `.wasm`
-# artifact on disk. That is why the only thing needed here is a way to read ledger
-# entries: a verdict must not depend on a funded account, on a shared ledger's state, or
-# on a node's willingness to accept a transaction, and it must be reproducible.
-#
-# `reqwest` is used directly rather than through a Soroban RPC client crate. The two
-# calls this needs are `getNetwork` and `getLedgerEntries`, the XDR types below already
-# decode the answers, and the client crates that exist would bring an async runtime and
-# a second copy of `stellar-xdr` into a program that has no other use for either.
-#
-# `rustls` rather than the platform TLS stack, so that a released binary does not depend
-# on whichever OpenSSL the machine that installed it happens to have.
-reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "rustls"] }
-# StrKey decoding, so that a contract identifier is parsed by the implementation the
-# rest of the ecosystem uses rather than by a base32 decoder written here.
-stellar-strkey = "0.0.16"
-# The XDR types a ledger entry is decoded with.
-#
-# `base64` is not optional: a ledger entry arrives from RPC as base64-encoded XDR, and
-# without the feature the constructors that decode it are compiled out. The previous
-# spelling here named a `curr` feature that this major does not have — a leftover from
-# the layout where the crate carried two protocol versions side by side and selected
-# between them with `curr`/`next`. It went unnoticed because nothing in the workspace
-# depended on this crate, so Cargo never had to validate the feature list.
-stellar-xdr = { version = "27.0.0", features = ["base64", "std"] }
-# JSON Schema validation, so the runner rejects a profile the same way the
-# specification's own tooling does instead of re-deriving the rules.
-jsonschema = "0.56.0"
-# Report rendering. Held at or above 0.41.0: two advisories stand against earlier
-# releases — an unbounded namespace-declaration allocation in `NsReader`, and quadratic
-# run time when checking a start tag for duplicate attribute names. The workspace uses
-# only `escape`, which neither advisory reaches, and that is not a reason to keep it.
-# `deny.toml` denies a vulnerable dependency rather than a reachable path to one, on the
-# grounds that a tool whose output people gate merges on should not carry a known-bad
-# parser of untrusted input however narrowly it is used. Estamora's claim is about the
-# behaviour of somebody else's contract; it has no business shipping one of these.
-quick-xml = "0.42.0"
-# Tests and benchmarks
-assert_cmd = "2.2.2"
-predicates = "3.1.4"
-proptest = "1.11.0"
-tempfile = "3.27.0"
-criterion = "0.8.2"
-
-# Lints are workspace-wide so that a new crate cannot be less strict than its
-# neighbours by accident.
-[workspace.lints.rust]
-# `deny` rather than `forbid`: the Soroban SDK's `#[contractimpl]` macro installs
-# a contract entry point inside an `allow(unsafe_code)` of its own, and `forbid`
-# cannot be overridden even by a macro expansion, so `forbid` here would make
-# contract fixtures impossible to compile. `deny` still rejects unsafe code that
-# anyone writes by hand, which is what the rule is actually for.
-unsafe_code = "deny"
-missing_debug_implementations = "warn"
-missing_docs = "warn"
-unused_qualifications = "warn"
-
-[workspace.lints.clippy]
-all = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-# The runner prints structured output and parses untrusted documents, so these
-# two are errors rather than warnings.
-unwrap_used = "deny"
-expect_used = "deny"
-# A suppression has to say why. `#[allow(clippy::x)]` with no reason is how a
-# lint quietly stops applying to the code that most needs it.
-allow_attributes_without_reason = "deny"
-print_stdout = "deny"
-print_stderr = "deny"
-todo = "deny"
-unimplemented = "deny"
-dbg_macro = "deny"
+repository = "https://github.com/Estamora-Soroban-Layers/estamora-contracts"
+authors = ["Estamora Contributors"]
 
 [profile.release]
-# A conformance run must be reproducible before it is fast. LTO and a single
-# codegen unit are enabled so that a released binary's behaviour is a function of
-# its source, and debug info is stripped because release artefacts are shipped.
-lto = "fat"
-codegen-units = 1
+opt-level = "z"
+overflow-checks = true
+debug = 0
 strip = "symbols"
-# `panic` is stated rather than left implicit, because leaving it implicit is how it came
-# to be set to `abort` and a released binary came to be unable to produce a verdict at all.
-#
-# `abort` looks like a free few kilobytes and is a behavioural difference. A Soroban
-# contract reports a failure by panicking, and the path the `fixture:` targets run on goes
-# through `soroban-env-host`'s test utilities, which deliberately replace the panic hook so
-# that a panic from inside a contract prints nothing, and then catch the unwind to turn it
-# into a host error. Under `abort` there is no unwind to catch and no hook left to print
-# with, so the first vector that expects a failure ends the process: `estamora run
-# --contract fixture:none` exited 134 with zero bytes of stdout and stderr in every
-# released binary up to and including 0.1.2, while the debug build the whole test suite
-# used exited 0 and 1 exactly as documented. Asserting the contract on a build nobody
-# ships is asserting a different program, so CI asserts it on this profile.
-panic = "unwind"
-
-[profile.bench]
-debug = true
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
