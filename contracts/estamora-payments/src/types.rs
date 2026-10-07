@@ -44,5 +44,5 @@ pub enum DataKey {
     EscrowCounter,
     Escrow(u64),
     SpendCap(Address, Address, Address), // (owner, delegate, token)
-    TotalVolume(Address),               // token -> total settled volume
+    TotalVolume(Address),                // token -> total settled volume
 }

@@ -1,10 +1,6 @@
 #![cfg(test)]
 
-use crate::{
-    errors::Error,
-    types::EscrowStatus,
-    EstamoraPayments, EstamoraPaymentsClient,
-};
+use crate::{errors::Error, types::EscrowStatus, EstamoraPayments, EstamoraPaymentsClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token, Address, Env, String,
@@ -44,7 +40,14 @@ fn test_escrow_lifecycle_create_and_release() {
     let timeout = 3600u64; // 1 hour
     let memo = String::from_str(&env, "Test Milestone Payment");
 
-    let escrow_id = client.create_escrow(&buyer, &seller, &token_client.address, &amount, &timeout, &memo);
+    let escrow_id = client.create_escrow(
+        &buyer,
+        &seller,
+        &token_client.address,
+        &amount,
+        &timeout,
+        &memo,
+    );
     assert_eq!(escrow_id, 1);
     assert_eq!(client.get_escrow_count(), 1);
 
@@ -90,7 +93,14 @@ fn test_escrow_refund_after_timeout() {
     let timeout = 1_000u64;
     let memo = String::from_str(&env, "Time-locked Order");
 
-    let escrow_id = client.create_escrow(&buyer, &seller, &token_client.address, &amount, &timeout, &memo);
+    let escrow_id = client.create_escrow(
+        &buyer,
+        &seller,
+        &token_client.address,
+        &amount,
+        &timeout,
+        &memo,
+    );
 
     // Attempting to refund before timeout must fail
     let refund_result = client.try_refund_escrow(&buyer, &escrow_id);
@@ -174,7 +184,9 @@ fn test_spend_cap_delegated_payments() {
     // Owner registers spend cap for delegate: max 50 per tx, max 200 per day
     client.register_spend_cap(&owner, &delegate, &token_client.address, &50, &200);
 
-    let cap = client.get_spend_cap(&owner, &delegate, &token_client.address).unwrap();
+    let cap = client
+        .get_spend_cap(&owner, &delegate, &token_client.address)
+        .unwrap();
     assert_eq!(cap.per_tx_cap, 50);
     assert_eq!(cap.daily_cap, 200);
     assert!(cap.active);
@@ -185,7 +197,8 @@ fn test_spend_cap_delegated_payments() {
     assert_eq!(token_client.balance(&owner), 9_970);
 
     // Delegate tries to pay 60 (exceeds per_tx_cap of 50) -> should fail
-    let tx_fail = client.try_delegated_pay(&delegate, &owner, &recipient, &token_client.address, &60);
+    let tx_fail =
+        client.try_delegated_pay(&delegate, &owner, &recipient, &token_client.address, &60);
     assert_eq!(tx_fail, Err(Ok(Error::PerTxCapExceeded)));
 
     // Delegate makes three more payments of 50 each (total today = 30 + 50 + 50 + 50 = 180)
@@ -195,11 +208,13 @@ fn test_spend_cap_delegated_payments() {
     assert_eq!(token_client.balance(&recipient), 180);
 
     // Next payment of 30 would bring total to 210 > 200 daily cap -> should fail
-    let daily_fail = client.try_delegated_pay(&delegate, &owner, &recipient, &token_client.address, &30);
+    let daily_fail =
+        client.try_delegated_pay(&delegate, &owner, &recipient, &token_client.address, &30);
     assert_eq!(daily_fail, Err(Ok(Error::DailyCapExceeded)));
 
     // Fast forward 24 hours (86,401 seconds) -> daily window resets
-    env.ledger().set_timestamp(env.ledger().timestamp() + 86_401);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 86_401);
 
     // Payment succeeds again in new window
     client.delegated_pay(&delegate, &owner, &recipient, &token_client.address, &40);
@@ -207,6 +222,7 @@ fn test_spend_cap_delegated_payments() {
 
     // Revoke spend cap
     client.revoke_spend_cap(&owner, &delegate, &token_client.address);
-    let revoked_fail = client.try_delegated_pay(&delegate, &owner, &recipient, &token_client.address, &10);
+    let revoked_fail =
+        client.try_delegated_pay(&delegate, &owner, &recipient, &token_client.address, &10);
     assert_eq!(revoked_fail, Err(Ok(Error::SpendCapRevoked)));
 }

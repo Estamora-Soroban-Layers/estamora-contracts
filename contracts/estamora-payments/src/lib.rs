@@ -8,9 +8,7 @@ pub mod types;
 mod test;
 
 use errors::Error;
-use soroban_sdk::{
-    contract, contractimpl, token, Address, Env, String,
-};
+use soroban_sdk::{contract, contractimpl, token, Address, Env, String};
 use types::{DataKey, Escrow, EscrowStatus, SpendCap};
 
 const DAY_IN_SECONDS: u64 = 86_400;
@@ -85,8 +83,12 @@ impl EstamoraPayments {
             memo,
         };
 
-        e.storage().persistent().set(&DataKey::Escrow(counter), &escrow);
-        e.storage().instance().set(&DataKey::EscrowCounter, &counter);
+        e.storage()
+            .persistent()
+            .set(&DataKey::Escrow(counter), &escrow);
+        e.storage()
+            .instance()
+            .set(&DataKey::EscrowCounter, &counter);
 
         events::emit_escrow_created(&e, counter, &buyer, &seller, &token, amount);
 
@@ -121,10 +123,16 @@ impl EstamoraPayments {
 
         // Transfer funds from contract to seller
         let token_client = token::Client::new(&e, &escrow.token);
-        token_client.transfer(&e.current_contract_address(), &escrow.seller, &escrow.amount);
+        token_client.transfer(
+            &e.current_contract_address(),
+            &escrow.seller,
+            &escrow.amount,
+        );
 
         escrow.status = EscrowStatus::Released;
-        e.storage().persistent().set(&DataKey::Escrow(escrow_id), &escrow);
+        e.storage()
+            .persistent()
+            .set(&DataKey::Escrow(escrow_id), &escrow);
 
         events::emit_escrow_released(&e, escrow_id, &escrow.seller, escrow.amount);
 
@@ -170,7 +178,9 @@ impl EstamoraPayments {
         token_client.transfer(&e.current_contract_address(), &escrow.buyer, &escrow.amount);
 
         escrow.status = EscrowStatus::Refunded;
-        e.storage().persistent().set(&DataKey::Escrow(escrow_id), &escrow);
+        e.storage()
+            .persistent()
+            .set(&DataKey::Escrow(escrow_id), &escrow);
 
         events::emit_escrow_refunded(&e, escrow_id, &escrow.buyer, escrow.amount);
 
@@ -196,7 +206,9 @@ impl EstamoraPayments {
         }
 
         escrow.status = EscrowStatus::Disputed;
-        e.storage().persistent().set(&DataKey::Escrow(escrow_id), &escrow);
+        e.storage()
+            .persistent()
+            .set(&DataKey::Escrow(escrow_id), &escrow);
 
         events::emit_escrow_disputed(&e, escrow_id, &caller);
 
@@ -246,11 +258,17 @@ impl EstamoraPayments {
             token_client.transfer(&e.current_contract_address(), &escrow.buyer, &buyer_amount);
         }
         if seller_amount > 0 {
-            token_client.transfer(&e.current_contract_address(), &escrow.seller, &seller_amount);
+            token_client.transfer(
+                &e.current_contract_address(),
+                &escrow.seller,
+                &seller_amount,
+            );
         }
 
         escrow.status = EscrowStatus::Resolved;
-        e.storage().persistent().set(&DataKey::Escrow(escrow_id), &escrow);
+        e.storage()
+            .persistent()
+            .set(&DataKey::Escrow(escrow_id), &escrow);
 
         events::emit_escrow_resolved(&e, escrow_id, buyer_amount, seller_amount);
 

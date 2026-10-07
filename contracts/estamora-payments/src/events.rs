@@ -10,7 +10,13 @@ pub fn emit_escrow_created(
 ) {
     e.events().publish(
         (symbol_short!("escrow"), symbol_short!("created")),
-        (escrow_id, buyer.clone(), seller.clone(), token.clone(), amount),
+        (
+            escrow_id,
+            buyer.clone(),
+            seller.clone(),
+            token.clone(),
+            amount,
+        ),
     );
 }
 
@@ -35,12 +41,7 @@ pub fn emit_escrow_disputed(e: &Env, escrow_id: u64, disputer: &Address) {
     );
 }
 
-pub fn emit_escrow_resolved(
-    e: &Env,
-    escrow_id: u64,
-    buyer_amount: i128,
-    seller_amount: i128,
-) {
+pub fn emit_escrow_resolved(e: &Env, escrow_id: u64, buyer_amount: i128, seller_amount: i128) {
     e.events().publish(
         (symbol_short!("escrow"), symbol_short!("resolved")),
         (escrow_id, buyer_amount, seller_amount),
@@ -57,7 +58,13 @@ pub fn emit_spend_cap_set(
 ) {
     e.events().publish(
         (symbol_short!("spendcap"), symbol_short!("set")),
-        (owner.clone(), delegate.clone(), token.clone(), per_tx_cap, daily_cap),
+        (
+            owner.clone(),
+            delegate.clone(),
+            token.clone(),
+            per_tx_cap,
+            daily_cap,
+        ),
     );
 }
 
@@ -71,6 +78,12 @@ pub fn emit_delegated_payment(
 ) {
     e.events().publish(
         (symbol_short!("spendcap"), symbol_short!("pay")),
-        (owner.clone(), delegate.clone(), recipient.clone(), token.clone(), amount),
+        (
+            owner.clone(),
+            delegate.clone(),
+            recipient.clone(),
+            token.clone(),
+            amount,
+        ),
     );
 }
