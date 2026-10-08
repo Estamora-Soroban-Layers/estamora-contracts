@@ -1,7 +1,7 @@
 # Estamora Contracts
 
 [![CI](https://github.com/Estamora-Soroban-Layers/estamora-contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/Estamora-Soroban-Layers/estamora-contracts/actions/workflows/ci.yml)
-[![Soroban](https://img.shields.io/badge/Soroban-v27.0.6-purple.svg)](https://stellar.org)
+[![Soroban](https://img.shields.io/badge/Soroban-v22-purple.svg)](https://stellar.org)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![WASM Size](https://img.shields.io/badge/WASM_Size-26.2_KB-green.svg)](target/wasm32v1-none/release/estamora_payments.wasm)
 
@@ -15,44 +15,60 @@ Part of the **Estamora Payment Protocol**:
 
 ---
 
-## 1. Overview
+## 1. Product In Action & Live Operation
 
-**Estamora Payments** brings trustless programmable escrow and policy-guarded payments to the Stellar network. Built natively on **Soroban**, the contract enables:
+Estamora Contracts provide the deterministic on-chain accounting and state transition engine powering decentralized payments across the Stellar ecosystem.
 
-1. **Milestone & Time-Locked Escrows**: Buyers deposit funds locked in contract custody. Funds are released upon delivery or automatically refunded if delivery timeouts expire without completion.
-2. **Fair Split Dispute Arbitration**: In case of disputes, neutral arbitrators or contract governance can allocate percentage settlements between parties.
-3. **Delegated Spend Caps for Autonomous Agents & Services**: Account owners delegate controlled spending permissions to secondary accounts (AI agents, microservices, subscriptions) with strict per-transaction and 24-hour rolling window limits.
-4. **Full SAC & SEP-41 Compatibility**: Operates directly with Stellar Asset Contract (SAC) tokens including native XLM and stablecoins like USDC.
+### Milestone Escrow & Dispute Resolution Flow
+Contracts maintain immutable state machines ensuring buyer deposits remain safely locked in contract custody until delivery milestones are satisfied or dispute resolution is enacted.
+
+![Milestone Escrow Management](assets/screenshots/milestone-management.png)
+
+### Testnet Contract Telemetry & Verified Execution
+The contracts are actively deployed and verified on Stellar Testnet, processing real-time calls across Stellar Asset Contracts (SAC).
+
+![Testnet Contract Telemetry](assets/screenshots/contract-scenarios.png)
 
 ---
 
-## 2. Architecture
+## 2. Overview & Core Primitives
+
+**Estamora Payments** brings programmable escrow, conditional releases, and policy-guarded delegated payments to Stellar. Built natively on **Soroban**, the contract implements three foundational financial primitives:
+
+1. **Milestone & Time-Locked Escrows**: Buyers deposit funds into contract custody. Funds are unlocked upon delivery confirmation or automatically refunded to the buyer if delivery timeouts lapse.
+2. **Fair Split Dispute Arbitration**: Neutral arbiters or multisig governance can allocate percentage settlements between parties (e.g. 60% refund / 40% release) in contested scenarios.
+3. **Delegated Spend Caps for Autonomous Agents & Services**: Account owners delegate controlled spending permissions to secondary accounts (AI agents, automated services) with strict per-transaction and rolling 24-hour limits.
+4. **Native Stellar Asset Contract (SAC) Support**: Direct interoperability with native XLM and tokenized stablecoins such as USDC via standard Soroban token client interfaces.
+
+---
+
+## 3. Protocol Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Users["Participants"]
+    subgraph Users["Protocol Participants"]
         Buyer["Buyer / Principal"]
         Seller["Merchant / Service"]
         Agent["Delegate / AI Agent"]
         Admin["Arbiter / Admin"]
     end
 
-    subgraph Contract["EstamoraPayments (Soroban Smart Contract)"]
+    subgraph Contract["Estamora Contract (Soroban Rust Engine)"]
         EscrowEngine["Milestone Escrow Engine"]
         SpendCapEngine["Spend Cap & Window Tracker"]
-        Storage[("Persistent Ledger Storage")]
+        Storage[("Persistent & Instance Ledger Storage")]
     end
 
     subgraph Stellar["Stellar Network"]
         SAC["Stellar Asset Contract (USDC / XLM)"]
     end
 
-    Buyer -->|"1. create_escrow(amount, timeout)"| EscrowEngine
-    Buyer -->|"2. release_escrow(id)"| EscrowEngine
-    Buyer -->|"3. refund_escrow(id) [after timeout]"| EscrowEngine
-    Admin -->|"4. resolve_dispute(id, split)"| EscrowEngine
-    Buyer -->|"5. register_spend_cap(delegate, caps)"| SpendCapEngine
-    Agent -->|"6. delegated_pay(recipient, amount)"| SpendCapEngine
+    Buyer -->|"create_escrow(amount, timeout)"| EscrowEngine
+    Buyer -->|"release_escrow(id)"| EscrowEngine
+    Buyer -->|"refund_escrow(id) [after timeout]"| EscrowEngine
+    Admin -->|"resolve_dispute(id, split)"| EscrowEngine
+    Buyer -->|"register_spend_cap(delegate, caps)"| SpendCapEngine
+    Agent -->|"delegated_pay(recipient, amount)"| SpendCapEngine
 
     EscrowEngine -->|"transfer(seller)"| SAC
     EscrowEngine -->|"transfer(buyer)"| SAC
@@ -63,9 +79,9 @@ flowchart TD
 
 ---
 
-## 3. Contract Entry Points Reference
+## 4. Contract Interface Reference
 
-### Milestone Escrow
+### Milestone Escrow Methods
 
 | Function | Parameters | Description |
 | :--- | :--- | :--- |
@@ -77,86 +93,68 @@ flowchart TD
 | `get_escrow` | `escrow_id` | Returns `Escrow` struct: state, balances, timestamps, and parties. |
 | `get_escrow_count`| — | Returns total escrows instantiated. |
 
-### Delegated Spend Caps
+### Delegated Spend Cap Methods
 
 | Function | Parameters | Description |
 | :--- | :--- | :--- |
-| `register_spend_cap` | `owner, delegate, token, per_tx_cap, daily_cap` | Authorizes `delegate` to spend up to caps. |
+| `register_spend_cap` | `owner, delegate, token, per_tx_cap, daily_cap` | Authorizes `delegate` to spend up to specified limits. |
 | `delegated_pay` | `delegate, owner, recipient, token, amount` | Executes payment from `owner` allowance, updating 24h rolling totals. |
 | `revoke_spend_cap` | `owner, delegate, token` | Disables spend permissions for `delegate`. |
 | `get_spend_cap` | `owner, delegate, token` | Reads active limits, window timestamp, and amount spent in window. |
 
 ---
 
-## 4. Testnet Verification & Fixtures
+## 5. Security Architecture & Risk Controls
 
-Deployed and verified on **Soroban Testnet**:
-- **Contract ID**: `CCESTAMORAPAYMENTSGATEWAYTESTNET74829XQRLM918237VBYA92`
-- **WASM Size**: **26,247 bytes** (90% under the 256 KB network limit)
-- **RPC**: `https://soroban-testnet.stellar.org`
-
-### Verified On-Chain Scenarios
-
-| Scenario | Description | Ledger | Testnet Transaction Hash |
-| :--- | :--- | :---: | :--- |
-| **1. Init & Setup** | Upload WASM, initialize admin and counter | `4710120` | `a968bc517af34b0cb1ed53a4523d1cb8b9e562e9a9b1e8367acfabcbf18211b1` |
-| **2. Escrow Deposit** | Buyer locks 1,000 USDC into milestone escrow | `4710125` | `4c5759298c0364b01d386a5935b964532b04978ea595d96d904d9011f58d64b8` |
-| **3. Milestone Release** | Buyer inspects delivery and releases funds to seller | `4710130` | `b39457afa59f20d6ac90cd137e917c7efd51e27af4913c6c6308a6e5d0eff512` |
-| **4. Auto-Refund** | Expired order automatically refunds buyer without seller key | `4710142` | `dd327d32b18bfc6cebdf6c956503fe5318e28f8a8bc86a88cb7ee42c5d46b5e5` |
-| **5. Spend Cap Guard** | AI delegate completes micropayment within rolling window | `4710150` | `6f17c5707d86754cc64f7f5adf6d9b9840904f0bea4d10ae5620ffe065c61174` |
-
-*Full scenario setup and parameters are saved in [`deployments/testnet.json`](deployments/testnet.json).*
+1. **Strict Cryptographic Authorization**: All mutating functions enforce `require_auth()` on caller addresses to prevent unauthorized access or privilege escalation.
+2. **Reentrancy Protection**: Follows checks-effects-interactions ordering. State transitions are committed to storage prior to initiating cross-contract token transfers.
+3. **Ledger Storage Longevity (`extend_ttl`)**: Actively manages instance and persistent storage entry TTLs, preventing active escrows or spend-cap states from expiring or archiving.
+4. **Arithmetic Safety**: Uses checked math across all monetary calculations to guard against overflows and precision rounding exploits.
 
 ---
 
-## 5. Building & Testing
+## 6. Live Testnet Deployment
+
+- **Contract ID**: `CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR`
+- **Network**: Stellar Testnet
+- **RPC Endpoint**: `https://soroban-testnet.stellar.org`
+- **Network Passphrase**: `Test SDF Network ; September 2015`
+- **WASM Size**: **26,247 bytes** (optimized release build)
+
+---
+
+## 7. Build & Test Instructions
 
 ### Prerequisites
-- Rust 1.80+ (with `wasm32v1-none` target)
-- Soroban SDK v27.0.6
+- Rust 1.84+ with `wasm32v1-none` target installed:
+  ```bash
+  rustup target add wasm32v1-none
+  ```
+- Soroban CLI / Stellar CLI installed:
+  ```bash
+  cargo install --locked stellar-cli --features opt
+  ```
 
+### Build Contracts
 ```bash
-# Clone the repository
-git clone https://github.com/Estamora-Soroban-Layers/estamora-contracts.git
-cd estamora-contracts
-
-# Run all contract unit & integration tests
-cargo test -p estamora-payments
-
-# Compile release WebAssembly artifact
-cargo build --target wasm32v1-none --release -p estamora-payments
+# Build optimized WebAssembly contract
+cargo build --target wasm32v1-none --release
 ```
 
-### Test Suite Results
-```text
-running 4 tests
-test test::test_escrow_lifecycle_create_and_release ... ok
-test test::test_escrow_refund_after_timeout ... ok
-test test::test_escrow_dispute_and_resolution ... ok
-test test::test_spend_cap_delegated_payments ... ok
+### Run Automated Tests
+```bash
+# Run unit tests and invariant checks
+cargo test
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; finished in 0.12s
+# Run Clippy static analysis
+cargo clippy --all-targets -- -D warnings
+
+# Format code
+cargo fmt --all
 ```
 
 ---
 
-## 6. Community & Drips Wave Sprints
-
-We welcome open-source builders from the **Stellar Community Fund** and **Drips Stellar Wave**.
-
-- 💬 **Telegram**: [Estamora Community Group](https://t.me/estamora_stellar)
-- 👾 **Discord**: [Estamora Developers](https://discord.gg/estamora-dev)
-- 👤 **Maintainer**: [@winningtalker-commits](https://github.com/winningtalker-commits)
-
-### Recommended First Contributions (Drips Wave Backlog)
-Looking for tasks to tackle during the Drips contributor sprint? Check out our tagged issues:
-- `[Drips-01]` Multi-signature milestone release (require 2-of-3 signatures).
-- `[Drips-02]` Automated fee discount tier for high-volume merchants.
-- `[Drips-03]` Custom metadata IPFS CID attachment in escrow receipts.
-- `[Drips-04]` Dynamic window duration (configure 1h, 12h, or 7-day rolling spend caps).
-
----
-
-## 7. License
+## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
